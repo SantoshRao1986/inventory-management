@@ -2,9 +2,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
 from pydantic import BaseModel
+from datetime import date, timedelta
+import uuid
 from mock_data import inventory_items, orders, demand_forecasts, backlog_items, spending_summary, monthly_spending, category_spending, recent_transactions, purchase_orders
 
 app = FastAPI(title="Factory Inventory Management System")
+
+# In-memory store for restocking orders submitted via POST /api/orders
+submitted_orders: list = []
 
 # Quarter mapping for date filtering
 QUARTER_MAP = {
@@ -120,6 +125,12 @@ class CreatePurchaseOrderRequest(BaseModel):
     expected_delivery_date: str
     notes: Optional[str] = None
 
+class CreateRestockingOrderRequest(BaseModel):
+    items: List[dict]  # [{sku, name, quantity, unit_price}]
+    warehouse: Optional[str] = None
+    category: Optional[str] = None
+    total_value: float
+
 # API endpoints
 @app.get("/")
 def root():
@@ -148,10 +159,35 @@ def get_orders(
     status: Optional[str] = None,
     month: Optional[str] = None
 ):
-    """Get all orders with optional filtering"""
-    filtered_orders = apply_filters(orders, warehouse, category, status)
+    """Get all orders with optional filtering. Includes submitted restocking orders."""
+    # Merge static orders with in-memory submitted restocking orders
+    all_orders = orders + submitted_orders
+    filtered_orders = apply_filters(all_orders, warehouse, category, status)
     filtered_orders = filter_by_month(filtered_orders, month)
     return filtered_orders
+
+@app.post("/api/orders", response_model=Order, status_code=201)
+def create_restocking_order(request: CreateRestockingOrderRequest):
+    """Create a restocking order. Sets status to Submitted with 14-day lead time."""
+    today = date.today()
+    expected_delivery = today + timedelta(days=14)
+    order_number = f"RST-{today.year}-{len(submitted_orders) + 1:04d}"
+
+    new_order = {
+        "id": str(uuid.uuid4()),
+        "order_number": order_number,
+        "customer": "Internal Restock",
+        "items": request.items,
+        "status": "Submitted",
+        "order_date": today.isoformat(),
+        "expected_delivery": expected_delivery.isoformat(),
+        "total_value": request.total_value,
+        "actual_delivery": None,
+        "warehouse": request.warehouse,
+        "category": request.category,
+    }
+    submitted_orders.append(new_order)
+    return new_order
 
 @app.get("/api/orders/{order_id}", response_model=Order)
 def get_order(order_id: str):
