@@ -63,7 +63,7 @@
                 </td>
                 <td class="col-status">
                   <span :class="['badge', getOrderStatusClass(order.status)]">
-                    {{ t(`status.${order.status.toLowerCase()}`) }}
+                    {{ getStatusLabel(order.status) }}
                   </span>
                 </td>
                 <td class="col-date">{{ formatDate(order.order_date) }}</td>
@@ -134,13 +134,22 @@ export default {
     }
 
     const getOrderStatusClass = (status) => {
+      const normalizedStatus = status?.toLowerCase()
       const statusMap = {
-        'Delivered': 'success',
-        'Shipped': 'info',
-        'Processing': 'warning',
-        'Backordered': 'danger'
+        'delivered': 'success',
+        'shipped': 'info',
+        'processing': 'warning',
+        'backordered': 'danger',
+        'submitted': 'submitted'
       }
-      return statusMap[status] || 'info'
+      return statusMap[normalizedStatus] || 'info'
+    }
+
+    const getStatusLabel = (status) => {
+      const key = `status.${status?.toLowerCase()}`
+      const translated = t(key)
+      // If t() returns the key itself, the translation is missing — fall back to raw status
+      return translated === key ? status : translated
     }
 
     const formatDate = (dateString) => {
@@ -162,6 +171,7 @@ export default {
       orders,
       getOrdersByStatus,
       getOrderStatusClass,
+      getStatusLabel,
       formatDate,
       currencySymbol,
       translateProductName,
